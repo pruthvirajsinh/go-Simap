@@ -13,6 +13,8 @@ It is based on https://github.com/sqs/go-synco
 
 Following is a command line based example to Show usage of the package.
 
+<code>
+
 package main
 
 import (
@@ -110,7 +112,7 @@ func processEmail(msg Simap.MsgData) (err error) {
 	return
 }
 
-
+</code>
 
 
 
