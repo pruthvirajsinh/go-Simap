@@ -332,7 +332,7 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 }
 
-//DeleteMail deletes mails from src.Arguments have same meaning as CopyEmails
+//DeleteMail deletes mails having uids from src.Arguments have same meaning as CopyEmails
 func DeleteEmails(acct *IMAPAccount, src string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
@@ -416,6 +416,172 @@ func DeleteEmails(acct *IMAPAccount, src string, uids []uint32, jobSize int, ski
 	msecpermessage := timeelapsed.Seconds() / float64(len(uids)) * 1000
 	messagespersec := float64(len(uids)) / timeelapsed.Seconds()
 	log.Printf("Finished Deleting %d messages in %.2fs (%.1fms per message; %.1f messages per second)\n", len(uids), timeelapsed.Seconds(), msecpermessage, messagespersec)
+
+	return
+
+}
+
+//Marks mails having uids from src with IMAP flag specified in imapFlag.
+//See RFC 3501 section 2.3.2 for a list of all valid flags.
+func MarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32, jobSize int, skipCerti bool) (err error) {
+
+	imap.DefaultLogger = log.New(os.Stdout, "", 0)
+	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
+
+	log.Printf("Starting Marking for user '%s' on IMAP server '%s:%d'", acct.Username, acct.Server.Host, acct.Server.Port)
+
+	if jobSize <= 0 {
+		jobSize = 10
+	}
+
+	c, errD := Dial(acct.Server, skipCerti)
+	if errD != nil {
+		err = errD
+		return
+	}
+	_, err = login(c, acct.Username, acct.Password)
+	if err != nil {
+		return
+	}
+
+	defer c.Logout(-1)
+
+	if src == "" {
+		err = errors.New("No source provided")
+		return
+	}
+
+	err = WaitResp(c.Select(src, false))
+	if err != nil {
+		return
+	}
+
+	timestarted := time.Now()
+
+	var jobs []*imap.SeqSet
+
+	var jUids []uint32
+	for i := 0; i < len(uids); i++ {
+
+		if i%(jobSize) == 0 && i != 0 { //Append the new job to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
+		jUids = append(jUids, uids[i])
+		if i == len(uids)-1 { //Last Element Encountered Add to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
+	}
+
+	log.Printf("Marking: %d UIDs with %s total, %d jobs of size <= %d from %s\n", len(uids), imapFlag, len(jobs), jobSize, src)
+
+	for _, jobUIDs := range jobs {
+		log.Println("Marking ", jobUIDs)
+
+		err = WaitResp(c.UIDStore(jobUIDs, "+FLAGS.SILENT", imap.NewFlagSet(imapFlag)))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+	}
+	err = WaitResp(c.Close(false))
+	if err != nil {
+		log.Println("Error While Closing ", err)
+		return
+	}
+	timeelapsed := time.Since(timestarted)
+	msecpermessage := timeelapsed.Seconds() / float64(len(uids)) * 1000
+	messagespersec := float64(len(uids)) / timeelapsed.Seconds()
+	log.Printf("Finished Marking %d messages in %.2fs (%.1fms per message; %.1f messages per second)\n", len(uids), timeelapsed.Seconds(), msecpermessage, messagespersec)
+
+	return
+
+}
+
+//UnMarks mails having uids from src with IMAP flag specified in imapFlag.
+//See RFC 3501 section 2.3.2 for a list of all valid flags.
+func UnMarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32, jobSize int, skipCerti bool) (err error) {
+
+	imap.DefaultLogger = log.New(os.Stdout, "", 0)
+	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
+
+	log.Printf("Starting UnMarking for user '%s' on IMAP server '%s:%d'", acct.Username, acct.Server.Host, acct.Server.Port)
+
+	if jobSize <= 0 {
+		jobSize = 10
+	}
+
+	c, errD := Dial(acct.Server, skipCerti)
+	if errD != nil {
+		err = errD
+		return
+	}
+	_, err = login(c, acct.Username, acct.Password)
+	if err != nil {
+		return
+	}
+
+	defer c.Logout(-1)
+
+	if src == "" {
+		err = errors.New("No source provided")
+		return
+	}
+
+	err = WaitResp(c.Select(src, false))
+	if err != nil {
+		return
+	}
+
+	timestarted := time.Now()
+
+	var jobs []*imap.SeqSet
+
+	var jUids []uint32
+	for i := 0; i < len(uids); i++ {
+
+		if i%(jobSize) == 0 && i != 0 { //Append the new job to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
+		jUids = append(jUids, uids[i])
+		if i == len(uids)-1 { //Last Element Encountered Add to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
+	}
+
+	log.Printf("UnMarking: %d UIDs with %s total, %d jobs of size <= %d from %s\n", len(uids), imapFlag, len(jobs), jobSize, src)
+
+	for _, jobUIDs := range jobs {
+		log.Println("UnMarking ", jobUIDs)
+
+		err = WaitResp(c.UIDStore(jobUIDs, "-FLAGS.SILENT", imap.NewFlagSet(imapFlag)))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+	}
+	err = WaitResp(c.Close(false))
+	if err != nil {
+		log.Println("Error While Closing ", err)
+		return
+	}
+	timeelapsed := time.Since(timestarted)
+	msecpermessage := timeelapsed.Seconds() / float64(len(uids)) * 1000
+	messagespersec := float64(len(uids)) / timeelapsed.Seconds()
+	log.Printf("Finished UnMarking %d messages in %.2fs (%.1fms per message; %.1f messages per second)\n", len(uids), timeelapsed.Seconds(), msecpermessage, messagespersec)
 
 	return
 

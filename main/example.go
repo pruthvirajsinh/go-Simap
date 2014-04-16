@@ -16,6 +16,7 @@ var jobSize = flag.Int("jobsize", 2, "Number of Emails to be processed at a time
 var move = flag.Bool("move", false, "Weateher to move or copy the mails while dbox is given")
 var del = flag.Bool("delete", false, "Just Delete the fetched mails.Just to check Delete Functionality.")
 var skipCerti = flag.Bool("skipCerti", false, "If your IMAP server uses self signed certi then make this true to skip Certification verification.")
+var imapFlag = flag.String("imapflag", "", "Flag the emails")
 
 func usage() {
 	fmt.Fprintf(os.Stderr, "usage: main [server] [port] [username] [password]\n")
@@ -57,6 +58,13 @@ func main() {
 		//If successfull then append them to be moved to processed
 		uids = append(uids, msg.Imap_uid)
 	}
+	if *imapFlag != "" {
+		err = Simap.UnMarkEmails(acct, *mbox, *imapFlag, uids, *jobSize, *skipCerti)
+		if err != nil {
+			fmt.Println("Main : Error while Deleting ", err)
+		}
+	}
+
 	if *del == true {
 		err = Simap.DeleteEmails(acct, *mbox, uids, *jobSize, *skipCerti)
 		if err != nil {
