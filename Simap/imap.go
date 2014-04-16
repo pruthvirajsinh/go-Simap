@@ -1,3 +1,8 @@
+//Package Simap implements a simple Imap client which
+//--Fetches,Copies,Moves emails from mailboxes.
+//--Creates,Deletes Mboxes/Folders on the Server.
+//--Marks,Unmarks Imap Flags from the mails.
+//--Can Skip Certificate Verification of the IMAP Server. (Good for IMAP servers using SelfSigned Cerificates.)
 package Simap
 
 import "code.google.com/p/go-imap/go1/imap"
@@ -52,7 +57,7 @@ func WaitResp(cmd *imap.Command, err error) error {
 	return err
 }
 
-//Create a mailbox/folder on the server
+//CreateMbox creates a mailbox/folder on the server
 //If already exists then do nothing
 //IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
 //good only if IMAP server is using self signed certi.
@@ -82,7 +87,7 @@ func CreateMbox(acct *IMAPAccount, name string, skipCerti bool) (err error) {
 	return
 }
 
-//Delete a mailbox/folder on the server
+//DeleteMbox deletes a mailbox/folder on the server
 //If does not exist then do nothing
 func DeleteMbox(acct *IMAPAccount, name string, skipCerti bool) (err error) {
 
@@ -110,7 +115,7 @@ func DeleteMbox(acct *IMAPAccount, name string, skipCerti bool) (err error) {
 	return
 }
 
-//Copy Emails having unique identifiers uids (NOT sequence numbers) of mailbox src
+//CopyEmails copies Emails having unique identifiers uids (NOT sequence numbers) of mailbox src
 //to mailbox dst by making bunches of jobsize.
 //If dst mbox doesnt exist then it will create it.
 //IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
@@ -218,7 +223,7 @@ func CopyEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 }
 
-//Similar to CopyEmails but it moves the mails to dst hence deleting mails from src.
+//MoveEmails is similar to CopyEmails but it moves the mails to dst hence deleting mails from src.
 func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
@@ -332,7 +337,7 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 }
 
-//DeleteMail deletes mails having uids from src.Arguments have same meaning as CopyEmails
+//DeleteEMails deletes mails having uids from src.Arguments have same meaning as CopyEmails
 func DeleteEmails(acct *IMAPAccount, src string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
@@ -421,7 +426,7 @@ func DeleteEmails(acct *IMAPAccount, src string, uids []uint32, jobSize int, ski
 
 }
 
-//Marks mails having uids from src with IMAP flag specified in imapFlag.
+//MarkEmails marks mails having uids from src with IMAP flag specified in imapFlag.
 //See RFC 3501 section 2.3.2 for a list of all valid flags.
 func MarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
@@ -504,7 +509,7 @@ func MarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32, j
 
 }
 
-//UnMarks mails having uids from src with IMAP flag specified in imapFlag.
+//UnmarkEmails unmarks/resets flags of mails having uids from src with IMAP flag specified in imapFlag.
 //See RFC 3501 section 2.3.2 for a list of all valid flags.
 func UnMarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
@@ -587,7 +592,7 @@ func UnMarkEmails(acct *IMAPAccount, src string, imapFlag string, uids []uint32,
 
 }
 
-//Get Emails from mailbox mbox in Struct of Type MsgData.
+//GetEmails gets Emails from mailbox mbox in Struct of Type MsgData.
 //It searches the mailbox for messages that match the given searching criteria mentioned in query string.
 //See RFC 3501 section 6.4.4 for a list of all valid search keys.
 //It is the caller's responsibility to quote strings when necessary.
@@ -821,8 +826,8 @@ func GetMessageAsJSON(msg MsgData) (msgJSON string, err error) {
 	return
 }
 
-//Dial dials to the IMAP server
-//IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
+//Dial dials a connection to the IMAP server
+//If skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
 //good only if IMAP server is using self signed certi.
 func Dial(server *IMAPServer, skipCerti bool) (c *imap.Client, err error) {
 

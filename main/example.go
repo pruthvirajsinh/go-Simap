@@ -1,6 +1,6 @@
+//Package main implements command line Example to check the functionalities of the Package
 package main
 
-//Command line Example to check the functionalities of the Package
 import (
 	"flag"
 	"fmt"
