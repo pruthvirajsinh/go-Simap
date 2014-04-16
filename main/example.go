@@ -59,7 +59,7 @@ func main() {
 		uids = append(uids, msg.Imap_uid)
 	}
 	if *imapFlag != "" {
-		err = Simap.UnMarkEmails(acct, *mbox, *imapFlag, uids, *jobSize, *skipCerti)
+		err = Simap.MarkEmails(acct, *mbox, *imapFlag, uids, *jobSize, *skipCerti)
 		if err != nil {
 			fmt.Println("Main : Error while Deleting ", err)
 		}
