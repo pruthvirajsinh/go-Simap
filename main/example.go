@@ -61,7 +61,7 @@ func main() {
 	if *imapFlag != "" {
 		err = Simap.MarkEmails(acct, *mbox, *imapFlag, uids, *jobSize, *skipCerti)
 		if err != nil {
-			fmt.Println("Main : Error while Deleting ", err)
+			fmt.Println("Main : Error while Marking ", err)
 		}
 	}
 
@@ -83,7 +83,7 @@ func main() {
 		} else {
 			err = Simap.CopyEmails(acct, *mbox, *destBox, uids, *jobSize, *skipCerti)
 			if err != nil {
-				fmt.Println("Eror while moving ", err)
+				fmt.Println("Eror while Copying ", err)
 			}
 		}
 	}
