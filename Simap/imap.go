@@ -1,4 +1,4 @@
-package synco
+package Simap
 
 import "code.google.com/p/go-imap/go1/imap"
 import (
@@ -52,7 +52,71 @@ func WaitResp(cmd *imap.Command, err error) error {
 	return err
 }
 
-func CopyEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSize int) (err error) {
+//Create a mailbox/folder on the server
+//If already exists then do nothing
+//IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
+//good only if IMAP server is using self signed certi.
+func CreateMbox(acct *IMAPAccount, name string, skipCerti bool) (err error) {
+
+	c, errD := Dial(acct.Server, skipCerti)
+	if errD != nil {
+		err = errD
+		return
+	}
+	_, err = login(c, acct.Username, acct.Password)
+	if err != nil {
+		return
+	}
+
+	defer c.Logout(-1)
+
+	err = WaitResp(c.Select(name, false))
+	if err != nil { //Doesnt Exist->Create
+		err = WaitResp(c.Create(name))
+		if err != nil {
+			return
+		}
+		err = WaitResp(c.Select(name, false))
+	}
+	err = WaitResp(c.Close(false))
+	return
+}
+
+//Delete a mailbox/folder on the server
+//If does not exist then do nothing
+func DeleteMbox(acct *IMAPAccount, name string, skipCerti bool) (err error) {
+
+	c, errD := Dial(acct.Server, skipCerti)
+	if errD != nil {
+		err = errD
+		return
+	}
+	_, err = login(c, acct.Username, acct.Password)
+	if err != nil {
+		return
+	}
+
+	defer c.Logout(-1)
+
+	err = WaitResp(c.Select(name, false))
+	if err != nil { //Doesnt Exist,Return
+		return
+	}
+	err = WaitResp(c.Close(false))
+	if err != nil {
+		return
+	}
+	err = WaitResp(c.Delete(name))
+	return
+}
+
+//Copy Emails having unique identifiers uids (NOT sequence numbers) of mailbox src
+//to mailbox dst by making bunches of jobsize.
+//If dst mbox doesnt exist then it will create it.
+//IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
+//good only if IMAP server is using self signed certi.
+//e.g. if jobsize =10 and total emails =100 then it will create 10 bunches of size 10 and then copy them.
+func CopyEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
 	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
@@ -64,7 +128,7 @@ func CopyEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 	}
 
 	// Fetch UIDs.
-	c, errD := Dial(acct.Server)
+	c, errD := Dial(acct.Server, skipCerti)
 	if errD != nil {
 		err = errD
 		return
@@ -154,7 +218,8 @@ func CopyEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 }
 
-func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSize int) (err error) {
+//Similar to CopyEmails but it moves the mails to dst hence deleting mails from src.
+func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
 	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
@@ -166,7 +231,7 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 	}
 
 	// Fetch UIDs.
-	c, errD := Dial(acct.Server)
+	c, errD := Dial(acct.Server, skipCerti)
 	if errD != nil {
 		err = errD
 		return
@@ -213,13 +278,7 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 	var jUids []uint32
 	for i := 0; i < len(uids); i++ {
-		/*Logic
-		1.If we are at last index len(uids)-1 and still have not reached jobSize limit then append that to jobs
-			(In other words if set size is smaller then jobsize)
-		2.if we go over index of size greater then jobsize then add all elemetns up to that index in to jobs
-		3.0 mod n returns 0 hence i!=0 is checked
 
-		*/
 		if i%(jobSize) == 0 && i != 0 { //Append the new job to jobs
 			set, _ := imap.NewSeqSet("")
 			set.AddNum(jUids[:]...)
@@ -245,15 +304,15 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 			continue
 		}
 
-		err1 = WaitResp(c.UIDStore(jobUIDs, "+FLAGS.SILENT", imap.NewFlagSet(`\Deleted`)))
-		if err1 != nil {
+		err = WaitResp(c.UIDStore(jobUIDs, "+FLAGS.SILENT", imap.NewFlagSet(`\Deleted`)))
+		if err != nil {
 			log.Println(err)
 			continue
 		}
 
-		err1 = WaitResp(c.Expunge(jobUIDs))
+		err = WaitResp(c.Expunge(jobUIDs))
 
-		if err1 != nil {
+		if err != nil {
 			log.Println("Expunge:", err)
 			continue
 		}
@@ -273,17 +332,19 @@ func MoveEmails(acct *IMAPAccount, src string, dst string, uids []uint32, jobSiz
 
 }
 
-func DeleteEmails(acct *IMAPAccount, src string, dst string, uids []uint32) (err error) {
+//DeleteMail deletes mails from src.Arguments have same meaning as CopyEmails
+func DeleteEmails(acct *IMAPAccount, src string, uids []uint32, jobSize int, skipCerti bool) (err error) {
 
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
 	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
 
-	log.Printf("Running for user '%s' on IMAP server '%s:%d'", acct.Username, acct.Server.Host, acct.Server.Port)
+	log.Printf("Starting Deleting for user '%s' on IMAP server '%s:%d'", acct.Username, acct.Server.Host, acct.Server.Port)
 
-	jobsize := 250
+	if jobSize <= 0 {
+		jobSize = 10
+	}
 
-	// Fetch UIDs.
-	c, errD := Dial(acct.Server)
+	c, errD := Dial(acct.Server, skipCerti)
 	if errD != nil {
 		err = errD
 		return
@@ -292,59 +353,80 @@ func DeleteEmails(acct *IMAPAccount, src string, dst string, uids []uint32) (err
 	if err != nil {
 		return
 	}
+
+	defer c.Logout(-1)
+
 	if src == "" {
 		err = errors.New("No source provided")
 		return
 	}
-	if dst == "" {
-		err = errors.New("No Dst provided")
+
+	err = WaitResp(c.Select(src, false))
+	if err != nil {
 		return
-	}
-	_, err = c.Select(dst, true)
-	if err != nil { //Doesnt Exist->Create
-		_, err = c.Create(dst)
-		if err != nil {
-			return
-		}
 	}
 
 	timestarted := time.Now()
 
-	nparts := (len(uids) + jobsize - 1) / jobsize
-	jobs := make([]*imap.SeqSet, nparts)
-	for i := 0; i < nparts; i++ {
-		lo := i * jobsize
-		hi_exclusive := (i + 1) * jobsize
-		if hi_exclusive >= len(uids) {
-			hi_exclusive = len(uids) - 1
-			for uids[hi_exclusive] == 0 { // hacky
-				hi_exclusive--
-			}
-		}
-		set, _ := imap.NewSeqSet(":")
+	var jobs []*imap.SeqSet
 
-		set.AddNum(uids[lo:hi_exclusive]...)
-		jobs[i] = set
+	var jUids []uint32
+	for i := 0; i < len(uids); i++ {
+
+		if i%(jobSize) == 0 && i != 0 { //Append the new job to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
+		jUids = append(jUids, uids[i])
+		if i == len(uids)-1 { //Last Element Encountered Add to jobs
+			set, _ := imap.NewSeqSet("")
+			set.AddNum(jUids[:]...)
+			jobs = append(jobs, set)
+			jUids = nil
+		}
 	}
 
-	log.Printf("%d UIDs total, %d jobs of size <= %d\n", len(uids), len(jobs), jobsize)
+	log.Printf("Deleting: %d UIDs total, %d jobs of size <= %d from %s\n", len(uids), len(jobs), jobSize, src)
 
 	for _, jobUIDs := range jobs {
-		c.Copy(jobUIDs, dst)
-	}
+		log.Println("Deleting ", jobUIDs)
 
+		err = WaitResp(c.UIDStore(jobUIDs, "+FLAGS.SILENT", imap.NewFlagSet(`\Deleted`)))
+		if err != nil {
+			log.Println(err)
+			continue
+		}
+
+		err = WaitResp(c.Expunge(jobUIDs))
+
+		if err != nil {
+			log.Println("Expunge:", err)
+			continue
+		}
+
+	}
+	err = WaitResp(c.Close(false))
+	if err != nil {
+		log.Println("Error While Closing ", err)
+		return
+	}
 	timeelapsed := time.Since(timestarted)
 	msecpermessage := timeelapsed.Seconds() / float64(len(uids)) * 1000
 	messagespersec := float64(len(uids)) / timeelapsed.Seconds()
-	log.Printf("Finished copying %d messages in %.2fs (%.1fms per message; %.1f messages per second)\n", len(uids), timeelapsed.Seconds(), msecpermessage, messagespersec)
+	log.Printf("Finished Deleting %d messages in %.2fs (%.1fms per message; %.1f messages per second)\n", len(uids), timeelapsed.Seconds(), msecpermessage, messagespersec)
 
-	_, err = c.Close(false)
-	_, err = c.Logout(-1)
 	return
 
 }
 
-func GetEMails(acct *IMAPAccount, query string, mbox string, jobSize int) (mails []MsgData, err error) {
+//Get Emails from mailbox mbox in Struct of Type MsgData.
+//It searches the mailbox for messages that match the given searching criteria mentioned in query string.
+//See RFC 3501 section 6.4.4 for a list of all valid search keys.
+//It is the caller's responsibility to quote strings when necessary.
+//All strings must use UTF-8 encoding.
+func GetEMails(acct *IMAPAccount, query string, mbox string, jobSize int, skipCerti bool) (mails []MsgData, err error) {
 	imap.DefaultLogger = log.New(os.Stdout, "", 0)
 	//	imap.DefaultLogMask = imap.LogConn | imap.LogRaw
 
@@ -355,7 +437,7 @@ func GetEMails(acct *IMAPAccount, query string, mbox string, jobSize int) (mails
 	}
 
 	// Fetch UIDs.
-	c, errD := Dial(acct.Server)
+	c, errD := Dial(acct.Server, skipCerti)
 	if errD != nil {
 		err = errD
 		return
@@ -374,7 +456,6 @@ func GetEMails(acct *IMAPAccount, query string, mbox string, jobSize int) (mails
 	}
 	uids, err1 := SearchUIDs(c, query)
 	if err1 != nil {
-		fmt.Println("Error while Search UID: ", err1)
 		err = err1
 		return
 	}
@@ -431,7 +512,6 @@ func GetEMails(acct *IMAPAccount, query string, mbox string, jobSize int) (mails
 
 func SearchUIDs(c *imap.Client, query string) (uids []uint32, err error) {
 	//cmd, err := c.UIDSearch("X-GM-RAW", fmt.Sprint("\"", query, "\""))
-	fmt.Println("UID Searching with querry ", query)
 	//cmd, err := c.UIDSearch(fmt.Sprint("\"", query, "\""))
 	cmd, err := c.UIDSearch(query)
 	if err != nil {
@@ -494,7 +574,6 @@ func FetchMessages(c *imap.Client, uidSet *imap.SeqSet) (fetched []MsgData, err 
 			return
 		}
 		for _, rsp := range cmd.Data {
-			fmt.Println(rsp.MessageInfo().Attrs["UID"])
 
 			uid := imap.AsNumber(rsp.MessageInfo().Attrs["UID"])
 			mime := imap.AsBytes(rsp.MessageInfo().Attrs["RFC822"])
@@ -525,19 +604,19 @@ func GetMessage(msg *mail.Message, uid uint32) (msgData MsgData) {
 	if b, err1 := TextBody(msg); err1 == nil {
 		msgData.Body = b
 	} else {
-		log.Println(uid, ":TXT", err1)
+		//log.Println(uid, ":TXT", err1)
 	}
 
 	if b, err2 := HTMLBody(msg); err2 == nil {
 		msgData.HtmlBody = b
 	} else {
-		log.Println(uid, ":HTML", err2)
+		//log.Println(uid, ":HTML", err2)
 	}
 
 	if b, err3 := GpgBody(msg); err3 == nil {
 		msgData.GpgBody = b
 	} else {
-		log.Println(uid, ":GPG", err3)
+		//log.Println(uid, ":GPG", err3)
 	}
 
 	return
@@ -576,14 +655,21 @@ func GetMessageAsJSON(msg MsgData) (msgJSON string, err error) {
 	return
 }
 
-func Dial(server *IMAPServer) (c *imap.Client, err error) {
+//Dial dials to the IMAP server
+//IF skipCerti is true then it will not check for the validity of the Certificate of the IMAP server,
+//good only if IMAP server is using self signed certi.
+func Dial(server *IMAPServer, skipCerti bool) (c *imap.Client, err error) {
 
 	addr := fmt.Sprintf("%s:%d", server.Host, server.Port)
-	config := &tls.Config{
-		InsecureSkipVerify: true,
-		ServerName:         server.Host,
+	if skipCerti {
+		config := &tls.Config{
+			InsecureSkipVerify: true,
+			ServerName:         server.Host,
+		}
+		c, err = imap.DialTLS(addr, config)
+	} else {
+		c, err = imap.DialTLS(addr, nil)
 	}
-	c, err = imap.DialTLS(addr, config)
 	return
 }
 

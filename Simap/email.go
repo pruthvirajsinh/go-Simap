@@ -1,8 +1,6 @@
-package synco
+package Simap
 
 import "github.com/sloonz/go-qprintable"
-
-//import "code.google.com/p/go-charset/charset"
 import (
 	"errors"
 	"fmt"

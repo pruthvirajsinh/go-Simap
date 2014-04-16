@@ -1,4 +1,4 @@
-package synco
+package Simap
 
 import (
 	"io"
@@ -21,7 +21,6 @@ func Test_HTMLBody(t *testing.T) {
 	body, err = HTMLBody(stringToMessage(mime2))
 	expectBodyEquals(t, body, err, "<p>E=mc^2</p>", "mime2 HTML")
 }
-
 
 func Test_TextBody(t *testing.T) {
 	body, err := TextBody(stringToMessage(mime1))
